@@ -1,30 +1,97 @@
+;; DeFi Code Review and Rating System Smart Contract
 
-;; title: code-review
-;; version:
-;; summary:
-;; description:
+;; Constants
+(define-constant admin-owner tx-sender)
+(define-constant error-item-not-found (err u100))
+(define-constant error-access-denied (err u101))
+(define-constant error-duplicate-review (err u102))
 
-;; traits
-;;
+;; Data Variables
+(define-data-var latest-code-id uint u0)
+(define-data-var latest-feedback-id uint u0)
 
-;; token definitions
-;;
+;; Define the structure of a code submission
+(define-map code-submissions
+  { code-id: uint }
+  {
+    author: principal,
+    project-name: (string-ascii 64),
+    release-tag: (string-ascii 32),
+    quality-score: uint
+  }
+)
 
-;; constants
-;;
+;; Define the structure of feedback
+(define-map feedback-entries
+  { feedback-id: uint }
+  {
+    code-id: uint,
+    evaluator: principal,
+    rating: uint,
+    feedback-text: (string-ascii 256)
+  }
+)
 
-;; data vars
-;;
+;; Define collateral for evaluators
+(define-map evaluator-collateral
+  { evaluator: principal }
+  { collateral-amount: uint }
+)
 
-;; data maps
-;;
+;; Submit a new code project for review
+(define-public (submit-code-project (project-name (string-ascii 64)) (release-tag (string-ascii 32)))
+  (let
+    (
+      (code-id (+ (var-get latest-code-id) u1))
+    )
+    (map-set code-submissions
+      { code-id: code-id }
+      {
+        author: tx-sender,
+        project-name: project-name,
+        release-tag: release-tag,
+        quality-score: u0
+      }
+    )
+    (var-set latest-code-id code-id)
+    (ok code-id)
+  )
+)
 
-;; public functions
-;;
+;; Stake tokens to become an evaluator
+(define-public (deposit-evaluator-collateral (collateral-amount uint))
+  (let
+    (
+      (current-collateral (default-to u0 (get collateral-amount (map-get? evaluator-collateral { evaluator: tx-sender }))))
+    )
+    (try! (stx-transfer? collateral-amount tx-sender (as-contract tx-sender)))
+    (ok (map-set evaluator-collateral
+      { evaluator: tx-sender }
+      { collateral-amount: (+ current-collateral collateral-amount) }))
+  )
+)
 
-;; read only functions
-;;
-
-;; private functions
-;;
+;; Submit feedback for a code project
+(define-public (submit-code-feedback (code-id uint) (rating uint) (feedback-text (string-ascii 256)))
+  (let
+    (
+      (feedback-id (+ (var-get latest-feedback-id) u1))
+      (code-project (unwrap! (map-get? code-submissions { code-id: code-id }) error-item-not-found))
+      (evaluator-deposit (unwrap! (map-get? evaluator-collateral { evaluator: tx-sender }) error-access-denied))
+    )
+    (asserts! (>= (get collateral-amount evaluator-deposit) u100) error-access-denied)
+    (asserts! (and (>= rating u0) (<= rating u5)) error-access-denied)
+    (map-set feedback-entries
+      { feedback-id: feedback-id }
+      {
+        code-id: code-id,
+        evaluator: tx-sender,
+        rating: rating,
+        feedback-text: feedback-text
+      }
+    )
+    (var-set latest-feedback-id feedback-id)
+    (ok (update-code-quality-score code-id rating))
+  )
+)
 
