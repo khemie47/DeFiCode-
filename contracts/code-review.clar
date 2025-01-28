@@ -95,3 +95,31 @@
   )
 )
 
+;; Update code project quality score based on feedback rating
+(define-private (update-code-quality-score (code-id uint) (rating uint))
+  (let
+    (
+      (code-project (unwrap! (map-get? code-submissions { code-id: code-id }) error-item-not-found))
+      (current-score (get quality-score code-project))
+      (new-score (+ current-score rating))
+    )
+    (ok (map-set code-submissions
+      { code-id: code-id }
+      (merge code-project { quality-score: new-score })))
+  )
+)
+
+;; Get code project details
+(define-read-only (get-code-project (code-id uint))
+  (map-get? code-submissions { code-id: code-id })
+)
+
+;; Get feedback details
+(define-read-only (get-feedback-entry (feedback-id uint))
+  (map-get? feedback-entries { feedback-id: feedback-id })
+)
+
+;; Get evaluator collateral
+(define-read-only (get-evaluator-deposit (evaluator principal))
+  (map-get? evaluator-collateral { evaluator: evaluator })
+)
