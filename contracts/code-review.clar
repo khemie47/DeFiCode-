@@ -7,6 +7,7 @@
 (define-constant error-duplicate-review (err u102))
 (define-constant error-invalid-input (err u103))
 (define-constant error-overflow (err u104))
+(define-constant error-insufficient-balance (err u105))
 
 ;; Data Variables
 (define-data-var latest-code-id uint u0)
@@ -103,6 +104,34 @@
     (ok (map-set evaluator-collateral
       { evaluator: tx-sender }
       { collateral-amount: (+ current-collateral collateral-amount) }))
+  )
+)
+
+;; Withdraw staked collateral
+(define-public (withdraw-evaluator-collateral (withdraw-amount uint))
+  (let
+    (
+      (evaluator-deposit (unwrap! (map-get? evaluator-collateral { evaluator: tx-sender }) error-item-not-found))
+      (current-collateral (get collateral-amount evaluator-deposit))
+    )
+    ;; Input validation
+    (asserts! (> withdraw-amount u0) error-invalid-input)
+    (asserts! (<= withdraw-amount current-collateral) error-insufficient-balance)
+    
+    ;; Ensure evaluator maintains minimum required collateral (100) if they have active reviews
+    (asserts! 
+      (or
+        (is-eq (- current-collateral withdraw-amount) u0)  ;; Complete withdrawal
+        (>= (- current-collateral withdraw-amount) u100)   ;; Partial withdrawal maintaining minimum
+      )
+      error-invalid-input
+    )
+    
+    ;; Process withdrawal
+    (try! (as-contract (stx-transfer? withdraw-amount tx-sender tx-sender)))
+    (ok (map-set evaluator-collateral
+      { evaluator: tx-sender }
+      { collateral-amount: (- current-collateral withdraw-amount) }))
   )
 )
 
